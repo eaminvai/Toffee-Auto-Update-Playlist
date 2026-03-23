@@ -57,7 +57,7 @@ jobs:
 
               tengo = {
                   "name": "Toffee App All Channels ",
-                  "owner": "Eamin Talukdar\nTelegram: https://t.me/eamintalukdar",
+                  "owner": "Eamin Talukdar \ Telegram: https://t.me/eamintalukdar",
                   "channels_amount": 0,
                   "updated_on": updated,
                   "channels": []
@@ -107,16 +107,16 @@ jobs:
 
               tengo["channels_amount"] = len(ns_json)
 
-              with open("ns.m3u", "w", encoding="utf-8") as f:
+              with open("NS_Player.m3u", "w", encoding="utf-8") as f:
                   json.dump(ns_json, f, indent=2)
 
               with open("channels.json", "w", encoding="utf-8") as f:
                   json.dump(ns_json, f, indent=2)
 
-              with open("ott.m3u", "w", encoding="utf-8") as f:
+              with open("OTT_Navigator.m3u", "w", encoding="utf-8") as f:
                   f.write(ott_playlist)
 
-              with open("tengo.json", "w", encoding="utf-8") as f:
+              with open("Script_Api.json", "w", encoding="utf-8") as f:
                   json.dump(tengo, f, indent=2)
 
               print("Update completed successfully")
@@ -131,4 +131,4 @@ jobs:
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name "github-actions[bot]"
           git add .
-          git diff-index --quiet HEAD || (git commit -m "Auto update $(date)" && git push origin main)
+          git diff-index --quiet HEAD || (git commit -m "🔁 Auto Update Toffee Streams" && git push origin main)
