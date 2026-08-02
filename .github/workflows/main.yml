@@ -13,10 +13,10 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10'
 
@@ -29,10 +29,7 @@ jobs:
           import requests, json, datetime, os, sys
 
           def get_direct_toffee_cookie():
-              # Toffee Live Main Session Endpoint
               url = "https://toffeelive.com/api/v1/init"
-              
-              # Real Device Request Headers
               headers = {
                   "User-Agent": "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
                   "Accept": "application/json, text/plain, */*",
@@ -46,30 +43,20 @@ jobs:
 
               try:
                   session = requests.Session()
-                  # Step 1: Visit main domain to grab edge cookies
                   res1 = session.get("https://toffeelive.com/", headers=headers, timeout=15)
-                  
-                  # Step 2: Hit Init API
                   res2 = session.get(url, headers=headers, timeout=15)
                   
-                  # Consolidate all cookies
                   cookies_dict = session.cookies.get_dict()
-                  
                   if cookies_dict:
-                      cookie_str = "; ".join([f"{k}={v}" for k, v in cookies_dict.items()])
-                      return cookie_str
+                      return "; ".join([f"{k}={v}" for k, v in cookies_dict.items()])
                   
-                  # If Set-Cookie header contains values directly
                   raw_cookie = res2.headers.get("Set-Cookie")
                   if raw_cookie:
                       return raw_cookie
 
-                  print("[-] Response Status Code:", res2.status_code)
-                  print("[-] Response Body:", res2.text[:200])
                   return None
-
               except Exception as e:
-                  print(f"[-] Fetch exception: {e}")
+                  print(f"[-] Cookie Fetch Exception: {e}")
                   return None
 
           SRC_JSON = "api.json"
@@ -79,21 +66,17 @@ jobs:
               ck = get_direct_toffee_cookie()
               
               if not ck:
-                  print("[-] Error: Direct Cookie Generation Failed (Blocked or Changed API)")
+                  print("[-] Error: Direct Cookie Generation Failed")
                   sys.exit(1)
 
-              print(f"[+] Cookie generated successfully: {ck[:30]}...")
+              print(f"[+] Cookie generated: {ck[:30]}...")
 
               if not os.path.exists(SRC_JSON):
-                  print(f"[-] Error: '{SRC_JSON}' file is missing in the repository root!")
+                  print(f"[-] Error: '{SRC_JSON}' not found!")
                   sys.exit(1)
 
               with open(SRC_JSON, "r", encoding="utf-8") as f:
                   channels = json.load(f)
-
-              if not channels:
-                  print("[-] Error: api.json is empty!")
-                  sys.exit(1)
 
               ns_json = []
               ott_playlist = "#EXTM3U\n"
@@ -123,6 +106,7 @@ jobs:
                   except Exception:
                       host = ""
 
+                  # NS Player Format
                   ns_json.append({
                       "name": name,
                       "logo": logo,
@@ -131,6 +115,7 @@ jobs:
                       "cookie": ck
                   })
 
+                  # Script API Format
                   tengo["channels"].append({
                       "category_name": cat,
                       "name": name,
@@ -144,6 +129,7 @@ jobs:
                       }
                   })
 
+                  # OTT Navigator Format
                   ott_playlist += f'#EXTINF:-1 group-title="{cat}" tvg-logo="{logo}", {name}\n'
                   ott_playlist += f'#EXTVLCOPT:http-user-agent={user_agent}\n'
                   ott_playlist += f'#EXTVLCOPT:http-cookie={ck}\n'
@@ -151,16 +137,23 @@ jobs:
 
               tengo["channels_amount"] = len(ns_json)
 
+              # ১. NS Player format
+              with open("NS_Player.m3u", "w", encoding="utf-8") as f:
+                  json.dump(ns_json, f, indent=2)
+
+              # ২. Channels JSON
               with open("channels.json", "w", encoding="utf-8") as f:
                   json.dump(ns_json, f, indent=2)
 
+              # ৩. Script API JSON
               with open("Script_Api.json", "w", encoding="utf-8") as f:
                   json.dump(tengo, f, indent=2)
 
+              # ৪. OTT Navigator M3U Playlist
               with open("OTT_Navigator.m3u", "w", encoding="utf-8") as f:
                   f.write(ott_playlist)
 
-              print("[+] Update completed successfully!")
+              print("[+] All files including NS_Player.m3u generated successfully!")
 
           except Exception as e:
               print(f"[-] Execution Error: {e}")
