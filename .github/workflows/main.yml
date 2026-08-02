@@ -28,7 +28,6 @@ jobs:
           python3 - << 'EOF'
           import requests, json, datetime, os, sys
 
-          # Dynamic Cookie Source
           RAW_COOKIE_SOURCE = "https://raw.githubusercontent.com/BINOD-XD/Toffee-Auto-Update-Playlist/refs/heads/main/toffee_channel_data.json"
           SRC_JSON = "api.json"
 
@@ -38,10 +37,22 @@ jobs:
               r.raise_for_status()
               
               source_data = r.json()
-              ck = source_data.get("set_cookie", "")
+              ck = ""
+
+              # Smart Cookie Extraction Strategy
+              # 1. Direct top-level 'set_cookie' key
+              if isinstance(source_data, dict):
+                  ck = source_data.get("set_cookie", "")
+
+              # 2. Extract from inner channel list if top-level key missing
+              if not ck:
+                  ch_list = source_data.get("channels", []) if isinstance(source_data, dict) else source_data
+                  if isinstance(ch_list, list) and len(ch_list) > 0:
+                      first_ch = ch_list[0]
+                      ck = first_ch.get("cookie", "") or first_ch.get("headers", {}).get("Cookie", "")
 
               if not ck:
-                  print("[-] Error: 'set_cookie' is empty in the source JSON!")
+                  print("[-] Error: Could not extract valid cookie from source JSON structure!")
                   sys.exit(1)
 
               print(f"[+] Successfully obtained cookie: {ck[:35]}...")
@@ -130,7 +141,7 @@ jobs:
               with open("OTT_Navigator.m3u", "w", encoding="utf-8") as f:
                   f.write(ott_playlist)
 
-              print("[+] All files updated successfully using working source cookie!")
+              print("[+] All files updated successfully!")
 
           except Exception as e:
               print(f"[-] Execution Error: {e}")
