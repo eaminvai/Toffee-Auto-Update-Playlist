@@ -28,55 +28,69 @@ jobs:
           python3 - << 'EOF'
           import requests, json, datetime, os, sys
 
+          # ১. রিয়েল ডিভাইস থেকে সংগৃহীত টফি সিকিউর কুকি অ্যান্ডপয়েন্ট
           def get_direct_toffee_cookie():
+              # App Session Init Endpoint
               url = "https://toffeelive.com/api/v1/init"
+              
+              # Standard User Agent matching stream playback
+              user_agent = "Toffee (Linux; Android 14)"
+              
               headers = {
-                  "User-Agent": "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
+                  "User-Agent": user_agent,
                   "Accept": "application/json, text/plain, */*",
-                  "Accept-Language": "en-US,en;q=0.9",
+                  "X-Requested-With": "com.toffee.live",
                   "Origin": "https://toffeelive.com",
-                  "Referer": "https://toffeelive.com/",
-                  "Sec-Fetch-Dest": "empty",
-                  "Sec-Fetch-Mode": "cors",
-                  "Sec-Fetch-Site": "same-origin"
+                  "Referer": "https://toffeelive.com/"
               }
 
               try:
                   session = requests.Session()
-                  res1 = session.get("https://toffeelive.com/", headers=headers, timeout=15)
-                  res2 = session.get(url, headers=headers, timeout=15)
+                  # Root URL-এ প্রথম রিকোয়েস্ট পাঠিয়ে Edge Cookie নেওয়া
+                  session.get("https://toffeelive.com/", headers=headers, timeout=15)
+                  
+                  # API Endpoint হিট করা
+                  res = session.get(url, headers=headers, timeout=15)
                   
                   cookies_dict = session.cookies.get_dict()
-                  if cookies_dict:
-                      return "; ".join([f"{k}={v}" for k, v in cookies_dict.items()])
                   
-                  raw_cookie = res2.headers.get("Set-Cookie")
+                  # যদি Session Cookies পাওয়া যায়
+                  if cookies_dict:
+                      cookie_str = "; ".join([f"{k}={v}" for k, v in cookies_dict.items()])
+                      return cookie_str, user_agent
+                  
+                  # Header এ সরাসরি থাকলে
+                  raw_cookie = res.headers.get("Set-Cookie")
                   if raw_cookie:
-                      return raw_cookie
+                      return raw_cookie, user_agent
 
-                  return None
+                  return None, user_agent
               except Exception as e:
                   print(f"[-] Cookie Fetch Exception: {e}")
-                  return None
+                  return None, user_agent
 
           SRC_JSON = "api.json"
 
           try:
-              print("[+] Generating fresh Toffee cookie...")
-              ck = get_direct_toffee_cookie()
+              print("[+] Fetching fresh Toffee Session Cookie...")
+              ck, app_ua = get_direct_toffee_cookie()
               
               if not ck:
-                  print("[-] Error: Direct Cookie Generation Failed")
+                  print("[-] Error: Direct Cookie Generation Failed!")
                   sys.exit(1)
 
-              print(f"[+] Cookie generated: {ck[:30]}...")
+              print(f"[+] Cookie fetched successfully: {ck[:35]}...")
 
               if not os.path.exists(SRC_JSON):
-                  print(f"[-] Error: '{SRC_JSON}' not found!")
+                  print(f"[-] Error: '{SRC_JSON}' file is missing in root repository!")
                   sys.exit(1)
 
               with open(SRC_JSON, "r", encoding="utf-8") as f:
                   channels = json.load(f)
+
+              if not channels:
+                  print("[-] Error: api.json is empty!")
+                  sys.exit(1)
 
               ns_json = []
               ott_playlist = "#EXTM3U\n"
@@ -89,8 +103,6 @@ jobs:
                   "updated_on": updated,
                   "channels": []
               }
-
-              user_agent = "Toffee Eamin Talukdar (Linux;Android 14)"
 
               for ch in channels:
                   link = ch.get("link")
@@ -111,7 +123,7 @@ jobs:
                       "name": name,
                       "logo": logo,
                       "link": link,
-                      "User-Agent": user_agent,
+                      "User-Agent": app_ua,
                       "cookie": ck
                   })
 
@@ -124,14 +136,14 @@ jobs:
                       "headers": {
                           "Host": host,
                           "Cookie": ck,
-                          "User-Agent": user_agent,
+                          "User-Agent": app_ua,
                           "Accept-Encoding": "gzip"
                       }
                   })
 
-                  # OTT Navigator Format
+                  # OTT Navigator / IPTV standard playlist format
                   ott_playlist += f'#EXTINF:-1 group-title="{cat}" tvg-logo="{logo}", {name}\n'
-                  ott_playlist += f'#EXTVLCOPT:http-user-agent={user_agent}\n'
+                  ott_playlist += f'#EXTVLCOPT:http-user-agent={app_ua}\n'
                   ott_playlist += f'#EXTVLCOPT:http-cookie={ck}\n'
                   ott_playlist += f'{link}\n'
 
@@ -153,7 +165,7 @@ jobs:
               with open("OTT_Navigator.m3u", "w", encoding="utf-8") as f:
                   f.write(ott_playlist)
 
-              print("[+] All files including NS_Player.m3u generated successfully!")
+              print("[+] All playlists updated successfully!")
 
           except Exception as e:
               print(f"[-] Execution Error: {e}")
