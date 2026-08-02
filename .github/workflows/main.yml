@@ -30,7 +30,7 @@ jobs:
           python3 - << 'EOF'
           import requests, json, datetime, os, sys
 
-          API_URL = "https://apis.allinonedev.top/tf/"
+          API_URL = "https://raw.githubusercontent.com/BINOD-XD/Toffee-Auto-Update-Playlist/refs/heads/main/toffee_channel_data.json"
           SRC_JSON = "api.json"
 
           try:
