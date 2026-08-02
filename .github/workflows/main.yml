@@ -1,129 +1,175 @@
-import requests
-import json
-import datetime
-import os
-import sys
+name: Toffee Cookie Auto Update
 
-# ১. সরাসরি Toffee-র ব্যাকএন্ড সার্ভার থেকে নতুন Session/Cookie জেনারেট করার ফাংশন
-def get_direct_toffee_cookie():
-    # Toffee Session / Auth API URL
-    url = "https://toffeelive.com/api/v1/session"  # অথবা আপনার জানা সরাসরি টোকেন URL
-    
-    headers = {
-        "User-Agent": "Toffee Eamin Talukdar (Linux;Android 14)",
-        "Content-Type": "application/json",
-        "Accept": "*/*"
-    }
+on:
+  schedule:
+    - cron: '0 * * * *'
+  workflow_dispatch:
 
-    try:
-        # রিকোয়েস্ট পাঠানো হচ্ছে
-        response = requests.post(url, headers=headers, timeout=10)
-        
-        # যদি সরাসরি Response Header-এ Cookie থাকে
-        cookie = response.headers.get("Set-Cookie") or response.cookies.get_dict()
-        
-        # অথবা Response JSON-এ যদি টোকেন/কুকি থাকে
-        if not cookie and response.status_code == 200:
-            res_data = response.json()
-            cookie = res_data.get("token") or res_data.get("cookie")
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
-        # যদি ডিকশনারি আকারে আসে তবে স্ট্রিংয়ে কনভার্ট করা
-        if isinstance(cookie, dict):
-            cookie = "; ".join([f"{k}={v}" for k, v in cookie.items()])
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v3
 
-        return cookie
-    except Exception as e:
-        print(f"Direct Cookie Fetch Failed: {e}")
-        return None
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
 
+      - name: Install Dependencies
+        run: pip install requests urllib3
 
-SRC_JSON = "api.json"
+      - name: Execute Update
+        run: |
+          python3 - << 'EOF'
+          import requests, json, datetime, os, sys
 
-try:
-    # থার্ড পার্টি ছাড়া সরাসরি কুকি নেওয়া
-    ck = get_direct_toffee_cookie()
-    
-    if not ck:
-        print("Error: Direct Cookie Generation Failed!")
-        sys.exit(1)
+          def get_direct_toffee_cookie():
+              # Toffee Live Main Session Endpoint
+              url = "https://toffeelive.com/api/v1/init"
+              
+              # Real Device Request Headers
+              headers = {
+                  "User-Agent": "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36",
+                  "Accept": "application/json, text/plain, */*",
+                  "Accept-Language": "en-US,en;q=0.9",
+                  "Origin": "https://toffeelive.com",
+                  "Referer": "https://toffeelive.com/",
+                  "Sec-Fetch-Dest": "empty",
+                  "Sec-Fetch-Mode": "cors",
+                  "Sec-Fetch-Site": "same-origin"
+              }
 
-    print(f"Successfully generated direct cookie: {ck[:30]}...")
+              try:
+                  session = requests.Session()
+                  # Step 1: Visit main domain to grab edge cookies
+                  res1 = session.get("https://toffeelive.com/", headers=headers, timeout=15)
+                  
+                  # Step 2: Hit Init API
+                  res2 = session.get(url, headers=headers, timeout=15)
+                  
+                  # Consolidate all cookies
+                  cookies_dict = session.cookies.get_dict()
+                  
+                  if cookies_dict:
+                      cookie_str = "; ".join([f"{k}={v}" for k, v in cookies_dict.items()])
+                      return cookie_str
+                  
+                  # If Set-Cookie header contains values directly
+                  raw_cookie = res2.headers.get("Set-Cookie")
+                  if raw_cookie:
+                      return raw_cookie
 
-    if not os.path.exists(SRC_JSON):
-        print(f"Error: '{SRC_JSON}' not found!")
-        sys.exit(1)
+                  print("[-] Response Status Code:", res2.status_code)
+                  print("[-] Response Body:", res2.text[:200])
+                  return None
 
-    with open(SRC_JSON, "r", encoding="utf-8") as f:
-        channels = json.load(f)
+              except Exception as e:
+                  print(f"[-] Fetch exception: {e}")
+                  return None
 
-    ns_json = []
-    ott_playlist = "#EXTM3U\n"
-    updated = datetime.datetime.now().strftime("%d-%m-%Y %I:%M:%S %p")
+          SRC_JSON = "api.json"
 
-    tengo = {
-        "name": "Toffee App All Channels",
-        "owner": "Eamin Talukdar \\ Telegram: https://t.me/eamintalukdar",
-        "channels_amount": 0,
-        "updated_on": updated,
-        "channels": []
-    }
+          try:
+              print("[+] Generating fresh Toffee cookie...")
+              ck = get_direct_toffee_cookie()
+              
+              if not ck:
+                  print("[-] Error: Direct Cookie Generation Failed (Blocked or Changed API)")
+                  sys.exit(1)
 
-    user_agent = "Toffee Eamin Talukdar (Linux;Android 14)"
+              print(f"[+] Cookie generated successfully: {ck[:30]}...")
 
-    for ch in channels:
-        link = ch.get("link")
-        if not link:
-            continue
+              if not os.path.exists(SRC_JSON):
+                  print(f"[-] Error: '{SRC_JSON}' file is missing in the repository root!")
+                  sys.exit(1)
 
-        name = ch.get("name", "Live")
-        logo = ch.get("logo", "")
-        cat  = ch.get("category_name", "Bangladeshi")
-        
-        try:
-            host = link.split("//")[-1].split("/")[0]
-        except Exception:
-            host = ""
+              with open(SRC_JSON, "r", encoding="utf-8") as f:
+                  channels = json.load(f)
 
-        ns_json.append({
-            "name": name,
-            "logo": logo,
-            "link": link,
-            "User-Agent": user_agent,
-            "cookie": ck
-        })
+              if not channels:
+                  print("[-] Error: api.json is empty!")
+                  sys.exit(1)
 
-        tengo["channels"].append({
-            "category_name": cat,
-            "name": name,
-            "link": link,
-            "logo": logo,
-            "headers": {
-                "Host": host,
-                "Cookie": ck,
-                "User-Agent": user_agent,
-                "Accept-Encoding": "gzip"
-            }
-        })
+              ns_json = []
+              ott_playlist = "#EXTM3U\n"
+              updated = datetime.datetime.now().strftime("%d-%m-%Y %I:%M:%S %p")
 
-        ott_playlist += f'#EXTINF:-1 group-title="{cat}" tvg-logo="{logo}", {name}\n'
-        ott_playlist += f'#EXTVLCOPT:http-user-agent={user_agent}\n'
-        ott_playlist += f'#EXTVLCOPT:http-cookie={ck}\n'
-        ott_playlist += f'{link}\n'
+              tengo = {
+                  "name": "Toffee App All Channels",
+                  "owner": "Eamin Talukdar \\ Telegram: https://t.me/eamintalukdar",
+                  "channels_amount": 0,
+                  "updated_on": updated,
+                  "channels": []
+              }
 
-    tengo["channels_amount"] = len(ns_json)
+              user_agent = "Toffee Eamin Talukdar (Linux;Android 14)"
 
-    # ফাইল রাইট করা
-    with open("channels.json", "w", encoding="utf-8") as f:
-        json.dump(ns_json, f, indent=2)
+              for ch in channels:
+                  link = ch.get("link")
+                  if not link:
+                      continue
 
-    with open("Script_Api.json", "w", encoding="utf-8") as f:
-        json.dump(tengo, f, indent=2)
+                  name = ch.get("name", "Live")
+                  logo = ch.get("logo", "")
+                  cat  = ch.get("category_name", "Bangladeshi")
+                  
+                  try:
+                      host = link.split("//")[-1].split("/")[0]
+                  except Exception:
+                      host = ""
 
-    with open("OTT_Navigator.m3u", "w", encoding="utf-8") as f:
-        f.write(ott_playlist)
+                  ns_json.append({
+                      "name": name,
+                      "logo": logo,
+                      "link": link,
+                      "User-Agent": user_agent,
+                      "cookie": ck
+                  })
 
-    print("Update completed successfully without 3rd party API!")
+                  tengo["channels"].append({
+                      "category_name": cat,
+                      "name": name,
+                      "link": link,
+                      "logo": logo,
+                      "headers": {
+                          "Host": host,
+                          "Cookie": ck,
+                          "User-Agent": user_agent,
+                          "Accept-Encoding": "gzip"
+                      }
+                  })
 
-except Exception as e:
-    print(f"Error: {e}")
-    sys.exit(1)
+                  ott_playlist += f'#EXTINF:-1 group-title="{cat}" tvg-logo="{logo}", {name}\n'
+                  ott_playlist += f'#EXTVLCOPT:http-user-agent={user_agent}\n'
+                  ott_playlist += f'#EXTVLCOPT:http-cookie={ck}\n'
+                  ott_playlist += f'{link}\n'
+
+              tengo["channels_amount"] = len(ns_json)
+
+              with open("channels.json", "w", encoding="utf-8") as f:
+                  json.dump(ns_json, f, indent=2)
+
+              with open("Script_Api.json", "w", encoding="utf-8") as f:
+                  json.dump(tengo, f, indent=2)
+
+              with open("OTT_Navigator.m3u", "w", encoding="utf-8") as f:
+                  f.write(ott_playlist)
+
+              print("[+] Update completed successfully!")
+
+          except Exception as e:
+              print(f"[-] Execution Error: {e}")
+              sys.exit(1)
+          EOF
+
+      - name: Push Changes
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add .
+          git diff-index --quiet HEAD || (git commit -m "🔁 Auto Update Toffee Streams" && git push origin main)
