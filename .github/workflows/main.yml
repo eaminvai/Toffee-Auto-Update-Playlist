@@ -1,134 +1,129 @@
+import requests
+import json
+import datetime
+import os
+import sys
 
-name: Toffee Cookie Auto Update
+# ১. সরাসরি Toffee-র ব্যাকএন্ড সার্ভার থেকে নতুন Session/Cookie জেনারেট করার ফাংশন
+def get_direct_toffee_cookie():
+    # Toffee Session / Auth API URL
+    url = "https://toffeelive.com/api/v1/session"  # অথবা আপনার জানা সরাসরি টোকেন URL
+    
+    headers = {
+        "User-Agent": "Toffee Eamin Talukdar (Linux;Android 14)",
+        "Content-Type": "application/json",
+        "Accept": "*/*"
+    }
 
-on:
-  schedule:
+    try:
+        # রিকোয়েস্ট পাঠানো হচ্ছে
+        response = requests.post(url, headers=headers, timeout=10)
+        
+        # যদি সরাসরি Response Header-এ Cookie থাকে
+        cookie = response.headers.get("Set-Cookie") or response.cookies.get_dict()
+        
+        # অথবা Response JSON-এ যদি টোকেন/কুকি থাকে
+        if not cookie and response.status_code == 200:
+            res_data = response.json()
+            cookie = res_data.get("token") or res_data.get("cookie")
 
-    - cron: '0 * * * *'
-  workflow_dispatch:
+        # যদি ডিকশনারি আকারে আসে তবে স্ট্রিংয়ে কনভার্ট করা
+        if isinstance(cookie, dict):
+            cookie = "; ".join([f"{k}={v}" for k, v in cookie.items()])
 
-jobs:
-  build:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
+        return cookie
+    except Exception as e:
+        print(f"Direct Cookie Fetch Failed: {e}")
+        return None
 
-    steps:
-      - name: Checkout Code
-        uses: actions/checkout@v3
 
-      - name: Setup Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.10'
+SRC_JSON = "api.json"
 
-      - name: Install Requests
-        run: pip install requests
+try:
+    # থার্ড পার্টি ছাড়া সরাসরি কুকি নেওয়া
+    ck = get_direct_toffee_cookie()
+    
+    if not ck:
+        print("Error: Direct Cookie Generation Failed!")
+        sys.exit(1)
 
-      - name: Execute Update
-        run: |
-          python3 - << 'EOF'
-          import requests, json, datetime, os, sys
+    print(f"Successfully generated direct cookie: {ck[:30]}...")
 
-          API_URL = "https://raw.githubusercontent.com/BINOD-XD/Toffee-Auto-Update-Playlist/refs/heads/main/toffee_channel_data.json"
-          SRC_JSON = "api.json"
+    if not os.path.exists(SRC_JSON):
+        print(f"Error: '{SRC_JSON}' not found!")
+        sys.exit(1)
 
-          try:
-              # Requesting the API
-              r = requests.get(API_URL, timeout=15)
-              ck = r.json().get("set_cookie", "")
-              
-              if not ck:
-                  print("No cookie received")
-                  sys.exit(0)
+    with open(SRC_JSON, "r", encoding="utf-8") as f:
+        channels = json.load(f)
 
-              if not os.path.exists(SRC_JSON):
-                  # If api.json doesn't exist, try to create an empty list or exit
-                  print("api.json missing, creating empty list")
-                  channels = [] 
-                  # sys.exit(0) # Commented out to prevent stop if file missing
-              else:
-                  with open(SRC_JSON, "r", encoding="utf-8") as f:
-                      channels = json.load(f)
+    ns_json = []
+    ott_playlist = "#EXTM3U\n"
+    updated = datetime.datetime.now().strftime("%d-%m-%Y %I:%M:%S %p")
 
-              ns_json = []
-              ott_playlist = "#EXTM3U\n"
-              updated = datetime.datetime.now().strftime("%d-%m-%Y %I:%M:%S %p")
+    tengo = {
+        "name": "Toffee App All Channels",
+        "owner": "Eamin Talukdar \\ Telegram: https://t.me/eamintalukdar",
+        "channels_amount": 0,
+        "updated_on": updated,
+        "channels": []
+    }
 
-              tengo = {
-                  "name": "Toffee App All Channels ",
-                  "owner": "Eamin Talukdar \ Telegram: https://t.me/eamintalukdar",
-                  "channels_amount": 0,
-                  "updated_on": updated,
-                  "channels": []
-              }
+    user_agent = "Toffee Eamin Talukdar (Linux;Android 14)"
 
-              for ch in channels:
-                  link = ch.get("link")
-                  if not link:
-                      continue
+    for ch in channels:
+        link = ch.get("link")
+        if not link:
+            continue
 
-                  name = ch.get("name", "Live")
-                  logo = ch.get("logo", "")
-                  cat  = ch.get("category_name", "Bangladeshi")
-                  
-                  # Host parsing safety
-                  try:
-                      host = link.split("//")[-1].split("/")[0]
-                  except:
-                      host = ""
+        name = ch.get("name", "Live")
+        logo = ch.get("logo", "")
+        cat  = ch.get("category_name", "Bangladeshi")
+        
+        try:
+            host = link.split("//")[-1].split("/")[0]
+        except Exception:
+            host = ""
 
-                  ns_json.append({
-                      "name": name,
-                      "logo": logo,
-                      "link": link,
-                       "User-Agent": "Toffee Eamin Talukdar (Linux;Android 14)",
-                      "cookie": ck
-                  })
+        ns_json.append({
+            "name": name,
+            "logo": logo,
+            "link": link,
+            "User-Agent": user_agent,
+            "cookie": ck
+        })
 
-                  tengo["channels"].append({
-                      "category_name": cat,
-                      "name": name,
-                      "link": link,
-                      "logo": logo,
-                      "headers": {
-                          "Host": host,
-                          "Cookie": ck,
-                          "User-Agent": "Toffee Eamin Talukdar (Linux;Android 14)",
-                          "Accept-Encoding": "gzip"
-                      }
-                  })
+        tengo["channels"].append({
+            "category_name": cat,
+            "name": name,
+            "link": link,
+            "logo": logo,
+            "headers": {
+                "Host": host,
+                "Cookie": ck,
+                "User-Agent": user_agent,
+                "Accept-Encoding": "gzip"
+            }
+        })
 
-                  ott_playlist += f'''#EXTINF:-1 group-title="{cat}" tvg-logo="{logo}", {name}
-          #EXTVLCOPT:http-user-agent=Toffee Eamin Talukdar (Linux;Android 14)
-          #EXTVLCOPT:http-cookie={ck}
-          {link}
-          '''
+        ott_playlist += f'#EXTINF:-1 group-title="{cat}" tvg-logo="{logo}", {name}\n'
+        ott_playlist += f'#EXTVLCOPT:http-user-agent={user_agent}\n'
+        ott_playlist += f'#EXTVLCOPT:http-cookie={ck}\n'
+        ott_playlist += f'{link}\n'
 
-              tengo["channels_amount"] = len(ns_json)
+    tengo["channels_amount"] = len(ns_json)
 
-              with open("NS_Player.m3u", "w", encoding="utf-8") as f:
-                  json.dump(ns_json, f, indent=2)
+    # ফাইল রাইট করা
+    with open("channels.json", "w", encoding="utf-8") as f:
+        json.dump(ns_json, f, indent=2)
 
-              with open("channels.json", "w", encoding="utf-8") as f:
-                  json.dump(ns_json, f, indent=2)
+    with open("Script_Api.json", "w", encoding="utf-8") as f:
+        json.dump(tengo, f, indent=2)
 
-              with open("OTT_Navigator.m3u", "w", encoding="utf-8") as f:
-                  f.write(ott_playlist)
+    with open("OTT_Navigator.m3u", "w", encoding="utf-8") as f:
+        f.write(ott_playlist)
 
-              with open("Script_Api.json", "w", encoding="utf-8") as f:
-                  json.dump(tengo, f, indent=2)
+    print("Update completed successfully without 3rd party API!")
 
-              print("Update completed successfully")
-
-          except Exception as e:
-              print("ERROR:", e)
-              sys.exit(1) # Fail the workflow on error
-          EOF
-
-      - name: Push Changes
-        run: |
-          git config --local user.email "github-actions[bot]@users.noreply.github.com"
-          git config --local user.name "github-actions[bot]"
-          git add .
-          git diff-index --quiet HEAD || (git commit -m "🔁 Auto Update Toffee Streams" && git push origin main)
+except Exception as e:
+    print(f"Error: {e}")
+    sys.exit(1)
