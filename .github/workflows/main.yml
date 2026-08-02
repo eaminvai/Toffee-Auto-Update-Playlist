@@ -21,75 +21,48 @@ jobs:
           python-version: '3.10'
 
       - name: Install Dependencies
-        run: pip install requests urllib3
+        run: pip install requests
 
       - name: Execute Update
         run: |
           python3 - << 'EOF'
           import requests, json, datetime, os, sys
 
-          def fetch_toffee_session():
-              # Real Android App Headers Simulation
-              url = "https://toffeelive.com/api/v1/init"
-              
-              headers = {
-                  "User-Agent": "Toffee/3.10.0 (Linux; Android 14)",
-                  "Accept-Encoding": "gzip",
-                  "X-Requested-With": "com.toffee.live",
-                  "Connection": "Keep-Alive"
-              }
-
-              try:
-                  session = requests.Session()
-                  # Send Session Request
-                  response = session.get(url, headers=headers, timeout=15)
-                  
-                  # Extract Cookies
-                  cookies = session.cookies.get_dict()
-                  
-                  if cookies:
-                      cookie_str = "; ".join([f"{k}={v}" for k, v in cookies.items()])
-                      return cookie_str
-                      
-                  # Fallback header extraction
-                  set_cookie = response.headers.get("Set-Cookie")
-                  if set_cookie:
-                      return set_cookie
-
-                  return None
-              except Exception as e:
-                  print(f"[-] Session Fetch Error: {e}")
-                  return None
-
+          # Dynamic Cookie Source
+          RAW_COOKIE_SOURCE = "https://raw.githubusercontent.com/BINOD-XD/Toffee-Auto-Update-Playlist/refs/heads/main/toffee_channel_data.json"
           SRC_JSON = "api.json"
 
           try:
-              print("[+] Fetching Toffee dynamic credentials...")
-              ck = fetch_toffee_session()
-
-              # Fallback statically if GH Actions IP is restricted
-              if not ck:
-                  print("[-] Warning: Direct session request failed. Retrying web edge request...")
-                  # Backup Web Edge Endpoint
-                  web_res = requests.get("https://toffeelive.com/", headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
-                  ck = "; ".join([f"{k}={v}" for k, v in web_res.cookies.get_dict().items()])
+              print("[+] Fetching live cookie from raw GitHub source...")
+              r = requests.get(RAW_COOKIE_SOURCE, timeout=15)
+              r.raise_for_status()
+              
+              source_data = r.json()
+              ck = source_data.get("set_cookie", "")
 
               if not ck:
-                  print("[-] Critical Error: Unable to fetch Cookie.")
+                  print("[-] Error: 'set_cookie' is empty in the source JSON!")
                   sys.exit(1)
 
-              print(f"[+] Fresh Cookie obtained successfully: {ck[:30]}...")
+              print(f"[+] Successfully obtained cookie: {ck[:35]}...")
 
+              # Check local api.json
               if not os.path.exists(SRC_JSON):
-                  print(f"[-] Error: '{SRC_JSON}' not found!")
+                  print(f"[-] Error: '{SRC_JSON}' was not found in repo root!")
                   sys.exit(1)
 
               with open(SRC_JSON, "r", encoding="utf-8") as f:
                   channels = json.load(f)
 
+              if not channels:
+                  print("[-] Error: api.json is empty!")
+                  sys.exit(1)
+
               ns_json = []
               ott_playlist = "#EXTM3U\n"
               updated = datetime.datetime.now().strftime("%d-%m-%Y %I:%M:%S %p")
+
+              user_agent = "Toffee Eamin Talukdar (Linux;Android 14)"
 
               tengo = {
                   "name": "Toffee App All Channels",
@@ -98,8 +71,6 @@ jobs:
                   "updated_on": updated,
                   "channels": []
               }
-
-              ua = "Toffee/3.10.0 (Linux; Android 14)"
 
               for ch in channels:
                   link = ch.get("link")
@@ -115,14 +86,16 @@ jobs:
                   except Exception:
                       host = ""
 
+                  # NS Player / channels.json Structure
                   ns_json.append({
                       "name": name,
                       "logo": logo,
                       "link": link,
-                      "User-Agent": ua,
+                      "User-Agent": user_agent,
                       "cookie": ck
                   })
 
+                  # Script_Api Structure
                   tengo["channels"].append({
                       "category_name": cat,
                       "name": name,
@@ -131,20 +104,20 @@ jobs:
                       "headers": {
                           "Host": host,
                           "Cookie": ck,
-                          "User-Agent": ua,
+                          "User-Agent": user_agent,
                           "Accept-Encoding": "gzip"
                       }
                   })
 
-                  # Playback Headers Mapping
+                  # OTT Navigator M3U Structure
                   ott_playlist += f'#EXTINF:-1 group-title="{cat}" tvg-logo="{logo}", {name}\n'
-                  ott_playlist += f'#EXTVLCOPT:http-user-agent={ua}\n'
-                  ott_playlist += f'#EXTVLCOPT:http-referrer=https://toffeelive.com/\n'
+                  ott_playlist += f'#EXTVLCOPT:http-user-agent={user_agent}\n'
                   ott_playlist += f'#EXTVLCOPT:http-cookie={ck}\n'
                   ott_playlist += f'{link}\n'
 
               tengo["channels_amount"] = len(ns_json)
 
+              # Write output files
               with open("NS_Player.m3u", "w", encoding="utf-8") as f:
                   json.dump(ns_json, f, indent=2)
 
@@ -157,7 +130,7 @@ jobs:
               with open("OTT_Navigator.m3u", "w", encoding="utf-8") as f:
                   f.write(ott_playlist)
 
-              print("[+] All Files and M3U playlists updated successfully!")
+              print("[+] All files updated successfully using working source cookie!")
 
           except Exception as e:
               print(f"[-] Execution Error: {e}")
