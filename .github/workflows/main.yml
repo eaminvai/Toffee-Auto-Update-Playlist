@@ -28,69 +28,64 @@ jobs:
           python3 - << 'EOF'
           import requests, json, datetime, os, sys
 
-          # ১. রিয়েল ডিভাইস থেকে সংগৃহীত টফি সিকিউর কুকি অ্যান্ডপয়েন্ট
-          def get_direct_toffee_cookie():
-              # App Session Init Endpoint
+          def fetch_toffee_session():
+              # Real Android App Headers Simulation
               url = "https://toffeelive.com/api/v1/init"
               
-              # Standard User Agent matching stream playback
-              user_agent = "Toffee (Linux; Android 14)"
-              
               headers = {
-                  "User-Agent": user_agent,
-                  "Accept": "application/json, text/plain, */*",
+                  "User-Agent": "Toffee/3.10.0 (Linux; Android 14)",
+                  "Accept-Encoding": "gzip",
                   "X-Requested-With": "com.toffee.live",
-                  "Origin": "https://toffeelive.com",
-                  "Referer": "https://toffeelive.com/"
+                  "Connection": "Keep-Alive"
               }
 
               try:
                   session = requests.Session()
-                  # Root URL-এ প্রথম রিকোয়েস্ট পাঠিয়ে Edge Cookie নেওয়া
-                  session.get("https://toffeelive.com/", headers=headers, timeout=15)
+                  # Send Session Request
+                  response = session.get(url, headers=headers, timeout=15)
                   
-                  # API Endpoint হিট করা
-                  res = session.get(url, headers=headers, timeout=15)
+                  # Extract Cookies
+                  cookies = session.cookies.get_dict()
                   
-                  cookies_dict = session.cookies.get_dict()
-                  
-                  # যদি Session Cookies পাওয়া যায়
-                  if cookies_dict:
-                      cookie_str = "; ".join([f"{k}={v}" for k, v in cookies_dict.items()])
-                      return cookie_str, user_agent
-                  
-                  # Header এ সরাসরি থাকলে
-                  raw_cookie = res.headers.get("Set-Cookie")
-                  if raw_cookie:
-                      return raw_cookie, user_agent
+                  if cookies:
+                      cookie_str = "; ".join([f"{k}={v}" for k, v in cookies.items()])
+                      return cookie_str
+                      
+                  # Fallback header extraction
+                  set_cookie = response.headers.get("Set-Cookie")
+                  if set_cookie:
+                      return set_cookie
 
-                  return None, user_agent
+                  return None
               except Exception as e:
-                  print(f"[-] Cookie Fetch Exception: {e}")
-                  return None, user_agent
+                  print(f"[-] Session Fetch Error: {e}")
+                  return None
 
           SRC_JSON = "api.json"
 
           try:
-              print("[+] Fetching fresh Toffee Session Cookie...")
-              ck, app_ua = get_direct_toffee_cookie()
-              
+              print("[+] Fetching Toffee dynamic credentials...")
+              ck = fetch_toffee_session()
+
+              # Fallback statically if GH Actions IP is restricted
               if not ck:
-                  print("[-] Error: Direct Cookie Generation Failed!")
+                  print("[-] Warning: Direct session request failed. Retrying web edge request...")
+                  # Backup Web Edge Endpoint
+                  web_res = requests.get("https://toffeelive.com/", headers={"User-Agent": "Mozilla/5.0"}, timeout=10)
+                  ck = "; ".join([f"{k}={v}" for k, v in web_res.cookies.get_dict().items()])
+
+              if not ck:
+                  print("[-] Critical Error: Unable to fetch Cookie.")
                   sys.exit(1)
 
-              print(f"[+] Cookie fetched successfully: {ck[:35]}...")
+              print(f"[+] Fresh Cookie obtained successfully: {ck[:30]}...")
 
               if not os.path.exists(SRC_JSON):
-                  print(f"[-] Error: '{SRC_JSON}' file is missing in root repository!")
+                  print(f"[-] Error: '{SRC_JSON}' not found!")
                   sys.exit(1)
 
               with open(SRC_JSON, "r", encoding="utf-8") as f:
                   channels = json.load(f)
-
-              if not channels:
-                  print("[-] Error: api.json is empty!")
-                  sys.exit(1)
 
               ns_json = []
               ott_playlist = "#EXTM3U\n"
@@ -103,6 +98,8 @@ jobs:
                   "updated_on": updated,
                   "channels": []
               }
+
+              ua = "Toffee/3.10.0 (Linux; Android 14)"
 
               for ch in channels:
                   link = ch.get("link")
@@ -118,16 +115,14 @@ jobs:
                   except Exception:
                       host = ""
 
-                  # NS Player Format
                   ns_json.append({
                       "name": name,
                       "logo": logo,
                       "link": link,
-                      "User-Agent": app_ua,
+                      "User-Agent": ua,
                       "cookie": ck
                   })
 
-                  # Script API Format
                   tengo["channels"].append({
                       "category_name": cat,
                       "name": name,
@@ -136,36 +131,33 @@ jobs:
                       "headers": {
                           "Host": host,
                           "Cookie": ck,
-                          "User-Agent": app_ua,
+                          "User-Agent": ua,
                           "Accept-Encoding": "gzip"
                       }
                   })
 
-                  # OTT Navigator / IPTV standard playlist format
+                  # Playback Headers Mapping
                   ott_playlist += f'#EXTINF:-1 group-title="{cat}" tvg-logo="{logo}", {name}\n'
-                  ott_playlist += f'#EXTVLCOPT:http-user-agent={app_ua}\n'
+                  ott_playlist += f'#EXTVLCOPT:http-user-agent={ua}\n'
+                  ott_playlist += f'#EXTVLCOPT:http-referrer=https://toffeelive.com/\n'
                   ott_playlist += f'#EXTVLCOPT:http-cookie={ck}\n'
                   ott_playlist += f'{link}\n'
 
               tengo["channels_amount"] = len(ns_json)
 
-              # ১. NS Player format
               with open("NS_Player.m3u", "w", encoding="utf-8") as f:
                   json.dump(ns_json, f, indent=2)
 
-              # ২. Channels JSON
               with open("channels.json", "w", encoding="utf-8") as f:
                   json.dump(ns_json, f, indent=2)
 
-              # ৩. Script API JSON
               with open("Script_Api.json", "w", encoding="utf-8") as f:
                   json.dump(tengo, f, indent=2)
 
-              # ৪. OTT Navigator M3U Playlist
               with open("OTT_Navigator.m3u", "w", encoding="utf-8") as f:
                   f.write(ott_playlist)
 
-              print("[+] All playlists updated successfully!")
+              print("[+] All Files and M3U playlists updated successfully!")
 
           except Exception as e:
               print(f"[-] Execution Error: {e}")
